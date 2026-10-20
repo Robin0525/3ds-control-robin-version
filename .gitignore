@@ -1,0 +1,25 @@
+# build output
+src/build/
+src/*.elf
+src/*.smdh
+src/*.3dsx
+src/*.cia
+src/banner.bin
+src/icon.bin
+src/*.map
+src/*.lst
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# deploy leftovers
+_verify.3dsx
+config_check.ini
+config.ini
+
+# os
+Thumbs.db
+.DS_Store

@@ -1,0 +1,6 @@
+# Windows（主目标平台）：虚拟 Xbox 360 手柄，还需要安装 ViGEmBus 驱动
+# https://github.com/ViGEm/ViGEmBus/releases
+vgamepad ; sys_platform == "win32"
+
+# Linux（备选，未实测）：内核 uinput，需要 sudo modprobe uinput + libudev-dev
+python-uinput ; sys_platform == "linux"

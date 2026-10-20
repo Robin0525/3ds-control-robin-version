@@ -1,0 +1,12 @@
+# 默认按文本处理，统一 LF（跨平台 diff 干净）
+*               text=auto eol=lf
+
+# 批处理必须是 CRLF，否则 cmd.exe 会把路径劈成碎字符
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+# 二进制（不要做换行转换）
+*.3dsx          binary
+*.cia           binary
+*.png           binary
+*.wav           binary
