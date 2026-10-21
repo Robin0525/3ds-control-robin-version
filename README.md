@@ -2,6 +2,8 @@
 
 把 Nintendo 3DS 当成 PC 的**无线手柄**：3DS 只负责采集按键和摇杆，通过 UDP 每帧发 12 字节给 PC；PC 端用 `vgamepad` 建一个虚拟 Xbox 360 手柄，游戏直接认。**不传画面**，延迟接近原生手柄。
 
+> **English**: a patched fork of [icicle1133/3ds-controller](https://github.com/icicle1133/3ds-controller) that actually works in-game — 12-byte packet fix, touch-screen L3/R3, non-blocking heartbeat at 30 Hz. See [CHANGELOG.md](CHANGELOG.md). Noncommercial only.
+
 > 本仓库是 [icicle1133/3ds-controller](https://github.com/icicle1133/3ds-controller)（v0.0.5）的**个人修改版**，修掉了上游"能连上但游戏完全没反应"等几个硬伤，并重做了快捷键与下屏 UI。上游原始 README 保留在 [`docs/upstream-README.md`](docs/upstream-README.md)。
 >
 > 改动清单见 [CHANGELOG.md](CHANGELOG.md)。许可证沿用上游的 **PolyForm Noncommercial License 1.0.0**（见 [LICENSE](LICENSE)）——**禁止商业用途**。
@@ -188,7 +190,10 @@ python tools/deploy.py --host 192.168.10.11
 
 ## 9. 许可证与致谢
 
+**Copyright © 2026 Robin0525**（本修改版）· **Copyright © 2025 icicle1133**（上游原版）
+
 - 上游项目：[icicle1133/3ds-controller](https://github.com/icicle1133/3ds-controller)，作者 icicle1133，基于 [CTurt/3DSController](https://github.com/CTurt/3DSController) 的思路重写
-- 许可证：**PolyForm Noncommercial License 1.0.0** —— 允许学习、修改、分享，**不允许商业使用**
-- 本仓库是对上游的修改版，按许可证要求：保留原始 `LICENSE`、说明已作修改（见 [CHANGELOG.md](CHANGELOG.md)）、原始说明存档于 `docs/upstream-README.md`
+- 许可证：**PolyForm Noncommercial License 1.0.0**（全文见 [LICENSE](LICENSE)）—— 允许学习、修改、分享，**不允许商业使用**
+- 本仓库是对上游的修改版，按许可证的要求（Distribution License / Changes and New Works License）：保留原始 `LICENSE`、在 [CHANGELOG.md](CHANGELOG.md) 中逐条说明所做的修改、原始说明存档于 `docs/upstream-README.md`
+- 本项目与任天堂无关，未使用任何任天堂的代码或资源；"Nintendo 3DS" 仅为说明兼容性而提及
 - PC 端依赖 [vgamepad](https://github.com/yannbouteiller/vgamepad) 与 [ViGEmBus](https://github.com/ViGEm/ViGEmBus)
