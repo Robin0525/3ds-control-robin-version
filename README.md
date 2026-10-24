@@ -78,7 +78,9 @@ Listening on port 8888...
 
 3DS 下屏 `Status` 变绿 **CONNECTED** 即成功，此时 PC 窗口会打印 `New 3DS connected from 192.168.x.x`。
 
-连不上（IP 变了）：在 3DS 上按住 **`L + START` 约 0.6 秒** → 软键盘输入 PC 的 IP → 确认，自动保存并重连。
+连不上（PC 换了 IP）：在 3DS 上按住 **`L + START` 约 0.6 秒** → 软键盘输入 PC 的 IP → 确认，自动保存并重连。
+
+**IP 只需要输一次**：程序会把它记在 `config.ini` 里，之后每次启动直接连。下屏平时显示的就是当前记住的地址，没有配置时显示 `(not set - L+START)`。
 
 ### 2.4 Linux
 
@@ -118,9 +120,9 @@ sudo python pc/pc.py
 
 下屏同时显示：IP、端口、连接状态、电量、L3/R3 状态、快捷键提示。
 
-## 4. config.ini
+## 4. config.ini（记住上一次的 IP）
 
-3DS 端从 `config.ini` 读地址，默认值写死在 `main.c`（`192.168.1.1:8888`），第一次改 IP 后会自动生成/更新：
+**程序里没有内置默认 IP。** 第一次启动（或 SD 卡上没有配置）时会自动弹出软键盘，输入一次 PC 的 IP；这个地址会写进 `config.ini`，**以后每次启动都直接用，不用再输**。只有 PC 的 IP 变了才需要按住 `L + START` 改一次。
 
 ```ini
 serverip=192.168.10.9
@@ -128,14 +130,16 @@ port=8888
 lcdtogglekey=KEY_L
 ```
 
-**文件位置取决于启动方式**（用的是相对路径，跟当前工作目录走）：
+- IP 没配置时下屏显示 `IP  (not set - L+START)`、状态显示黄色的 `NO IP SET`，此时不会去连一个无效地址空转
+- 配置不存在也不会自动生成一份带假 IP 的文件（旧版本写死 `192.168.1.1`，DHCP 一换租约就永远连不上）
+- `config.ini` 用 CRLF 换行也能正确解析（在 PC 上用记事本改过也没问题）
+
+**文件位置取决于启动方式**（代码用相对路径，跟当前工作目录走）：
 
 | 启动方式 | 工作目录 | 文件路径 |
 |---|---|---|
 | `.3dsx`（Homebrew Launcher） | `/3ds/` | `/3ds/config.ini` |
 | `.cia`（主菜单） | `/` | `/config.ini` |
-
-`tools/deploy.py` 会两个位置都写一份。
 
 `lcdtogglekey` 可选值：`KEY_L` / `KEY_R` / `KEY_ZL` / `KEY_ZR` / `KEY_SELECT`。
 
@@ -173,10 +177,9 @@ python tools/deploy.py --host 192.168.10.11
 它会：
 
 1. 上传 `prebuilt/3ds_controller.3dsx` 到 `/3ds/3ds_controller.3dsx`，再回读比对 MD5
-2. 自动探测本机 IP（即通往 3DS 的那块网卡的地址），写进 `config.ini`
-3. 同时写 `/3ds/config.ini` 和 `/config.ini`
+2. **默认不动 `config.ini`** —— 3DS 自己记着上次的 IP，从 PC 推一个过去只会在 DHCP 换租约后变成过期值
 
-参数：`--host`（3DS IP，也认环境变量 `DS_HOST`）、`--pc-ip`（强制指定写入的 PC IP）、`--no-config`（只传 3dsx）。
+参数：`--host`（3DS IP，也认环境变量 `DS_HOST`）、`--write-config`（顺带把本机 IP 写进 `/3ds/config.ini` 和 `/config.ini`，适合新卡首次配置）、`--pc-ip`（配合 `--write-config` 强制指定 PC IP）。
 
 ## 7. 已知限制
 
@@ -194,7 +197,8 @@ python tools/deploy.py --host 192.168.10.11
 | `hidKeysHeld()` 的高位（TOUCH/CPAD）污染按键位 | `& 0xFFFF` 掩码 |
 | 摇杆上下反向 | 去掉 Windows 分支多余的取负 |
 | 心跳 `select()` 阻塞 2 秒，摇杆"卡住" | 非阻塞心跳状态机，30Hz 发送 |
-| 读不到 `config.ini` | 相对路径按 cwd 处理，部署脚本两处都写 |
+| 读不到 `config.ini` | 相对路径按 cwd 处理；没配置时弹一次键盘而不是连假地址 |
+| 写死默认 IP `192.168.1.1`，DHCP 换租约后永远连不上 | 取消默认值，改为**记住上一次输入的 IP**，只改一次 |
 | 没有 L3/R3、没有电量、没有快捷键 | 触摸屏虚拟 L3/R3、下屏 UI 重做、`L+START` 改 IP / `L+START+SELECT` 退出 |
 
 详细原因与验证过程见 [CHANGELOG.md](CHANGELOG.md)。

@@ -6,8 +6,19 @@
 
 ## [Unreleased]
 
+### Fixed
+- **每次启动都要重输 IP**：`main.c` 里写死了 `DEFAULT_SERVER_IP "192.168.1.1"`，config.ini 缺失或地址过期时不但永远连不上，还会在缺配置时自动生成一份带假 IP 的文件。现在**取消默认地址**：没配置时启动后弹一次软键盘，输入即写入 `config.ini`，以后一直沿用，直到 `L + START` 再改。
+- 没有 IP 时不再每帧尝试 `initsocket()`（原来会对着无效地址空转）。
+- `saveconfigfile()` 把 `lcdtogglekey` 硬编码写回 `KEY_L`，用户改过背光键会被重置。改为按当前值写入。
+- 软键盘关闭后若 `L + START` 仍按着，会立刻再次弹窗。加锁存：必须完全松开才能再次触发。
+- `config.ini` 用 CRLF 保存时（在 PC 记事本里改过），`serverip` 会带一个尾部 `\r`，`inet_pton` 判定地址无效。读取时同时剔除 `\r`。
+
 ### Added
 - PC 接收端启动时打印**本机 IP**（默认路由所在网卡的地址，另附其余网卡），并提示在 3DS 上 `L + START` 填入。之前窗口只说 `Listening on port 8888`，PC 用 DHCP 时不知道要填哪个地址。
+- 下屏未配置地址时显示 `(not set - L+START)`，状态显示黄色 `NO IP SET`。
+
+### Changed
+- `tools/deploy.py` 默认**不再写 `config.ini`**（新增 `--write-config` 显式开启）。从 PC 推 IP 过去，DHCP 一换租约就变成过期值，正是"每次都要重输"的来源。
 
 ### Planned
 - CIA 打包脚本（依赖 `bannertool` + `makerom`，当前环境未安装）

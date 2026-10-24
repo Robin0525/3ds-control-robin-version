@@ -1,18 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Upload the 3DS Controller .3dsx to the console over ftpd and write config.ini.
+"""Upload the 3DS Controller .3dsx to the console over ftpd.
 
 Usage
 -----
     python tools/deploy.py --host 192.168.10.11
-    python tools/deploy.py --host 192.168.10.11 --pc-ip 192.168.10.9
-    python tools/deploy.py --host 192.168.10.11 --no-config
+    python tools/deploy.py --host 192.168.10.11 --write-config
 
-`--pc-ip` defaults to auto-detection: the local address that would be used to
-reach the 3DS. That is the address the console has to send its UDP packets to.
+By default only the .3dsx is uploaded. config.ini is NOT touched, because the
+console now remembers the last IP it was given (`L + START`) and a value
+pushed from the PC goes stale the moment DHCP hands the PC a new lease.
 
-The file goes to /3ds/3ds_controller.3dsx. config.ini is written twice, because
-the working directory differs between the two ways of starting the app:
+With --write-config the current PC IP is written to config.ini (handy for a
+fresh SD card); the address is auto-detected as the local address that would
+be used to reach the 3DS, and can be overridden with --pc-ip.
+
+config.ini is written twice because the working directory differs between the
+two ways of starting the app:
   * .3dsx via Homebrew Launcher -> cwd is /3ds  -> /3ds/config.ini
   * .cia from the home menu     -> cwd is /     -> /config.ini
 """
@@ -57,8 +61,8 @@ def main():
                     help="ftpd port (default: 5000)")
     ap.add_argument("--pc-ip", default=os.environ.get("PC_IP"),
                     help="PC IP written into config.ini (default: auto-detect)")
-    ap.add_argument("--no-config", action="store_true",
-                    help="only upload the .3dsx, leave config.ini untouched")
+    ap.add_argument("--write-config", action="store_true",
+                    help="also write config.ini with this PC's IP (3DS remembers the IP otherwise)")
     ap.add_argument("--no-upload", action="store_true",
                     help="only write config.ini")
     args = ap.parse_args()
@@ -88,7 +92,7 @@ def main():
                 c.close()
                 sys.exit("[ERROR] verification failed")
 
-    if not args.no_config:
+    if args.write_config:
         for path in CONF_PATHS:
             if c.put_bytes(path, conf.encode("utf-8")):
                 print(f"[配置] {path} -> {conf.strip().replace(chr(10), ' | ')}")

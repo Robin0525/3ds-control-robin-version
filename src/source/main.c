@@ -11,7 +11,6 @@
 #include <netdb.h>
 
 #define DEFAULT_PORT 8888
-#define DEFAULT_SERVER_IP "192.168.1.1"
 #define CONFIG_FILE "config.ini"
 #define MAX_LINE 256
 #define LCD_TOGGLE_KEY KEY_L
@@ -36,34 +35,27 @@ typedef struct {
     u32 lcdtogglekey;
 } config;
 
+/* No built-in default address on purpose: a hardcoded IP is wrong the moment
+   DHCP hands the PC a different lease, and the user then has to retype it
+   every single launch. The address is stored in config.ini and reused until
+   it is changed with L+START. Empty means "not configured yet". */
 void readconfigfile(config *cfg) {
-    strcpy(cfg->serverip, DEFAULT_SERVER_IP);
+    cfg->serverip[0] = '\0';
     cfg->port = DEFAULT_PORT;
     cfg->lcdtogglekey = LCD_TOGGLE_KEY;
     
     FILE *file = fopen(CONFIG_FILE, "r");
     if (!file) {
-        printf("config.ini not found at %s, using defaults\n", CONFIG_FILE);
-        printf("creating default config file...\n");
-        
-        file = fopen(CONFIG_FILE, "w");
-        if (file) {
-            fprintf(file, "serverip=%s\n", DEFAULT_SERVER_IP);
-            fprintf(file, "port=%d\n", DEFAULT_PORT);
-            fprintf(file, "lcdtogglekey=KEY_L\n");
-            fclose(file);
-            printf("default config file created at %s\n", CONFIG_FILE);
-        } else {
-            printf("failed to create default config file\n");
-        }
+        printf("no %s yet: PC IP will be asked on first launch\n", CONFIG_FILE);
         return;
     }
     
     char line[MAX_LINE];
     while (fgets(line, MAX_LINE, file)) {
         size_t len = strlen(line);
-        if (len > 0 && line[len-1] == '\n') {
-            line[len-1] = '\0';
+        /* Accept CRLF too: the file is often edited on a PC */
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) {
+            line[--len] = '\0';
         }
         
         char *key = strtok(line, "=");
@@ -156,12 +148,23 @@ int sendcontrollerstate(int sockfd, controllerstate *state) {
     return send(sockfd, state, sizeof(controllerstate), 0);
 }
 
+static const char *keyname(u32 key) {
+    switch (key) {
+        case KEY_L: return "KEY_L";
+        case KEY_R: return "KEY_R";
+        case KEY_ZL: return "KEY_ZL";
+        case KEY_ZR: return "KEY_ZR";
+        case KEY_SELECT: return "KEY_SELECT";
+        default: return "KEY_L";
+    }
+}
+
 void saveconfigfile(const config *cfg) {
     FILE *file = fopen(CONFIG_FILE, "w");
     if (!file) return;
     fprintf(file, "serverip=%s\n", cfg->serverip);
     fprintf(file, "port=%d\n", cfg->port);
-    fprintf(file, "lcdtogglekey=KEY_L\n");
+    fprintf(file, "lcdtogglekey=%s\n", keyname(cfg->lcdtogglekey));
     fclose(file);
 }
 
@@ -199,10 +202,12 @@ void printstatusmessage(int sockfd, const config *cfg, int isconnected, int lcds
     getbatterystatus(batterystatus, sizeof(batterystatus));
 
     consoleSelect(g_bottom_con);
-    printf("\x1b[3;11H%-24s", cfg->serverip);
+    printf("\x1b[3;11H%-24s", cfg->serverip[0] ? cfg->serverip : "(not set - L+START)");
     printf("\x1b[4;11H%-6d", cfg->port);
     if (isconnected)
         printf("\x1b[5;11H\x1b[32mCONNECTED\x1b[0m     ");
+    else if (!cfg->serverip[0])
+        printf("\x1b[5;11H\x1b[33mNO IP SET\x1b[0m     ");
     else
         printf("\x1b[5;11H\x1b[31mOFFLINE\x1b[0m       ");
     printf("\x1b[6;11H%-12s", batterystatus);
@@ -237,6 +242,41 @@ static void bottom_ui_l3r3(bool l3, bool r3) {
     consoleSelect(g_top_con);
 }
 
+/* Shared by the L+START combo and the first-launch prompt.
+   The address is written to config.ini, so it is reused on every later launch
+   until the user changes it again. Returns true if something new was stored. */
+static bool edit_server_ip(config *cfg, int *sockfd, int *isconnected) {
+    SwkbdState swkbd;
+    char ipbuf[64];
+    memset(ipbuf, 0, sizeof(ipbuf));
+    snprintf(ipbuf, sizeof(ipbuf), "%s", cfg->serverip);
+
+    swkbdInit(&swkbd, SWKBD_TYPE_NORMAL, 2, 15);
+    swkbdSetHintText(&swkbd, "PC IP address");
+    if (cfg->serverip[0]) {
+        swkbdSetInitialText(&swkbd, cfg->serverip);
+    }
+    swkbdSetValidation(&swkbd, SWKBD_NOTEMPTY_NOTBLANK, 0, 0);
+
+    if (swkbdInputText(&swkbd, ipbuf, sizeof(ipbuf)) != 0 || ipbuf[0] == '\0') {
+        return false;
+    }
+
+    snprintf(cfg->serverip, sizeof(cfg->serverip), "%s", ipbuf);
+    saveconfigfile(cfg);
+    printf("server ip saved: %s\n", cfg->serverip);
+
+    if (*sockfd >= 0) {
+        close(*sockfd);
+        *sockfd = -1;
+    }
+    *isconnected = 0;
+    g_ping_at = 0;
+    g_pong_at = 0;
+    bottom_ui_init();
+    return true;
+}
+
 int main(int argc, char **argv) {
     gfxInitDefault();
     g_top_con = consoleInit(GFX_TOP, NULL);
@@ -256,11 +296,16 @@ int main(int argc, char **argv) {
     GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_TOP);
 
     printf("3ds controller\n");
-    printf("connecting to pc at %s:%d...\n", cfg.serverip, cfg.port);
+    if (cfg.serverip[0]) {
+        printf("connecting to pc at %s:%d...\n", cfg.serverip, cfg.port);
+    } else {
+        printf("no saved PC IP, will ask after calibration\n");
+    }
     
-    int sockfd = initsocket(&cfg);
+    int sockfd = cfg.serverip[0] ? initsocket(&cfg) : -1;
     int isconnected = 0;
     u32 combo_hold = 0;
+    bool combo_armed = true;
     bool last_l3 = false, last_r3 = false;
     int lcdstate = 1;
     u32 lcdtoggleheldtime = 0;
@@ -275,6 +320,11 @@ int main(int argc, char **argv) {
     }
     
     printf("\ncalibration complete!\n");
+
+    /* First launch, or config.ini was removed: ask once, then remember it. */
+    if (!cfg.serverip[0]) {
+        edit_server_ip(&cfg, &sockfd, &isconnected);
+    }
     
     u32 laststatusupdate = 0;
     
@@ -287,34 +337,21 @@ int main(int argc, char **argv) {
         }
 
         /* L + START held for ~600ms: edit the PC IP address.
-           The hold requirement keeps it from clashing with the 3-key exit combo. */
+           The hold requirement keeps it from clashing with the 3-key exit combo,
+           and the latch stops the keyboard from reopening while the buttons are
+           still held after it closes. */
         if ((keysdown & (KEY_L | KEY_START)) == (KEY_L | KEY_START) && !(keysdown & KEY_SELECT)) {
             u32 now = osGetTime();
             if (combo_hold == 0) {
                 combo_hold = now ? now : 1;
-            } else if (now - combo_hold > 600) {
+            } else if (combo_armed && now - combo_hold > 600) {
+                combo_armed = false;
                 combo_hold = 0;
-                SwkbdState swkbd;
-                char ipbuf[64];
-                memset(ipbuf, 0, sizeof(ipbuf));
-                snprintf(ipbuf, sizeof(ipbuf), "%s", cfg.serverip);
-                swkbdInit(&swkbd, SWKBD_TYPE_NORMAL, 2, 15);
-                swkbdSetHintText(&swkbd, "PC IP address");
-                swkbdSetInitialText(&swkbd, cfg.serverip);
-                swkbdSetValidation(&swkbd, SWKBD_NOTEMPTY_NOTBLANK, 0, 0);
-                if (swkbdInputText(&swkbd, ipbuf, sizeof(ipbuf)) == 0 && ipbuf[0] != '\0') {
-                    snprintf(cfg.serverip, sizeof(cfg.serverip), "%s", ipbuf);
-                    saveconfigfile(&cfg);
-                    if (sockfd >= 0) {
-                        close(sockfd);
-                        sockfd = -1;
-                    }
-                    isconnected = 0;
-                    bottom_ui_init();
-                }
+                edit_server_ip(&cfg, &sockfd, &isconnected);
             }
         } else {
             combo_hold = 0;
+            combo_armed = true;
         }
         
         u32 currenttime = osGetTime();
@@ -327,7 +364,7 @@ int main(int argc, char **argv) {
             g_ping_at = 0;
             g_pong_at = 0;
         }
-        if (!isconnected && sockfd < 0) {
+        if (!isconnected && sockfd < 0 && cfg.serverip[0] != '\0') {
             sockfd = initsocket(&cfg);
             g_ping_at = 0;
             g_pong_at = 0;
