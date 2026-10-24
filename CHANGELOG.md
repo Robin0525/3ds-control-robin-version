@@ -6,8 +6,12 @@
 
 ## [Unreleased]
 
-- 预留：CIA 打包脚本（依赖 `bannertool` + `makerom`，当前环境未安装）
-- 预留：Linux `uinput` 分支实测
+### Added
+- PC 接收端启动时打印**本机 IP**（默认路由所在网卡的地址，另附其余网卡），并提示在 3DS 上 `L + START` 填入。之前窗口只说 `Listening on port 8888`，PC 用 DHCP 时不知道要填哪个地址。
+
+### Planned
+- CIA 打包脚本（依赖 `bannertool` + `makerom`，当前环境未安装）
+- Linux `uinput` 分支实测
 
 ## [1.0.0] - 2026-10-20
 

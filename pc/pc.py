@@ -203,6 +203,52 @@ def check_inactive_devices():
     for addr in devices_to_remove:
         connected_devices.pop(addr)
 
+def local_ips():
+    """LAN addresses of this PC, best guess first.
+
+    The first entry is the address the default route would use (the UDP
+    connect trick never actually sends a packet), which is normally the one
+    the 3DS should be pointed at. Extra adapters (VMware/WSL/hotspot) are
+    appended so the right address is visible when there are several.
+    """
+    ips = []
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("8.8.8.8", 80))
+        ips.append(probe.getsockname()[0])
+        probe.close()
+    except OSError:
+        pass
+
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip not in ips:
+                ips.append(ip)
+    except OSError:
+        pass
+
+    return [ip for ip in ips if not ip.startswith("127.") and not ip.startswith("169.254.")]
+
+
+def print_local_ip():
+    ips = local_ips()
+    line = "=" * 52
+    print(line)
+    if ips:
+        print(f"  PC IP : {ips[0]}")
+        if len(ips) > 1:
+            print(f"  other : {', '.join(ips[1:])}")
+    else:
+        print("  PC IP : (not detected - run ipconfig)")
+    print("  port  : 8888 (UDP)")
+    print("")
+    print("  On the 3DS press and hold L + START (0.6s),")
+    print("  then type the PC IP above.")
+    print(line)
+    print("")
+
+
 def main():
     global debug_mode, running, gamepad, gamepad_type, server_socket
     
@@ -212,7 +258,11 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--debug":
         debug_mode = True
         print("Debug mode enabled")
-    
+
+    # Print the address first: the user needs it on the 3DS even if the
+    # virtual controller fails to initialize below.
+    print_local_ip()
+
     gamepad = setup_controller()
     if not gamepad:
         print("Cannot continue without virtual controller. Exiting.")

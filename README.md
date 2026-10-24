@@ -53,13 +53,24 @@ pip install vgamepad
 
 还要装 [ViGEmBus 驱动](https://github.com/ViGEm/ViGEmBus/releases)（一次性），否则虚拟手柄建不出来。
 
-然后双击 `tools\start-receiver.bat`，窗口显示：
+然后双击 `tools\start-receiver.bat`，窗口第一屏就会打印**本机 IP**（3DS 要填的就是它）：
 
 ```
+====================================================
+  PC IP : 192.168.10.9
+  port  : 8888 (UDP)
+
+  On the 3DS press and hold L + START (0.6s),
+  then type the PC IP above.
+====================================================
+
 Xbox 360 controller initialized
 3DS Controller PC Receiver
+Running in vgamepad mode for Windows
 Listening on port 8888...
 ```
+
+有多块网卡（VMware / WSL / 热点）时会多打一行 `other : ...` 列出其余地址，选和 3DS 同一网段的那个。
 
 **这个窗口要一直开着**。
 
