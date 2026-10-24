@@ -27,8 +27,6 @@
 #define GAMEPAD_PORT 8888
 #define POINTER_PORT 8890
 
-#define LCD_TOGGLE_KEY KEY_L
-
 /* 3DS 没有可按下的摇杆。BIT(12)/BIT(13) 在 libctru 里没人用（BIT14/15 是 ZL/ZR），
    拿它们承载触摸屏虚拟出来的 L3/R3：左半 = L3，右半 = R3。 */
 #define VIRTUAL_L3 0x1000
@@ -65,22 +63,10 @@ typedef struct {
     char serverip[64];
     int port;        /* 手柄端口 */
     int pointerport; /* 键鼠端口 */
-    u32 lcdtogglekey;
     appmode mode;
 } config;
 
 /* ---------- 配置 ---------- */
-
-static const char *keyname(u32 key) {
-    switch (key) {
-        case KEY_L: return "KEY_L";
-        case KEY_R: return "KEY_R";
-        case KEY_ZL: return "KEY_ZL";
-        case KEY_ZR: return "KEY_ZR";
-        case KEY_SELECT: return "KEY_SELECT";
-        default: return "KEY_L";
-    }
-}
 
 /* 没有内置默认 IP：DHCP 一换租约，写死的地址就永远连不上，用户只能每次重输。
    空串表示"尚未配置"，启动时弹一次键盘。 */
@@ -88,7 +74,6 @@ static void readconfigfile(config *cfg) {
     cfg->serverip[0] = '\0';
     cfg->port = GAMEPAD_PORT;
     cfg->pointerport = POINTER_PORT;
-    cfg->lcdtogglekey = LCD_TOGGLE_KEY;
     cfg->mode = MODE_GAMEPAD;
 
     FILE *file = fopen(CONFIG_FILE, "r");
@@ -118,12 +103,6 @@ static void readconfigfile(config *cfg) {
             cfg->port = atoi(value);
         } else if (strcmp(key, "pointerport") == 0) {
             cfg->pointerport = atoi(value);
-        } else if (strcmp(key, "lcdtogglekey") == 0) {
-            if (strcmp(value, "KEY_R") == 0) cfg->lcdtogglekey = KEY_R;
-            else if (strcmp(value, "KEY_ZL") == 0) cfg->lcdtogglekey = KEY_ZL;
-            else if (strcmp(value, "KEY_ZR") == 0) cfg->lcdtogglekey = KEY_ZR;
-            else if (strcmp(value, "KEY_SELECT") == 0) cfg->lcdtogglekey = KEY_SELECT;
-            else cfg->lcdtogglekey = KEY_L;
         } else if (strcmp(key, "mode") == 0) {
             cfg->mode = (strcmp(value, "pointer") == 0) ? MODE_POINTER : MODE_GAMEPAD;
         }
@@ -139,7 +118,6 @@ static void saveconfigfile(const config *cfg) {
     fprintf(file, "serverip=%s\n", cfg->serverip);
     fprintf(file, "port=%d\n", cfg->port);
     fprintf(file, "pointerport=%d\n", cfg->pointerport);
-    fprintf(file, "lcdtogglekey=%s\n", keyname(cfg->lcdtogglekey));
     fprintf(file, "mode=%s\n", cfg->mode == MODE_POINTER ? "pointer" : "gamepad");
     fclose(file);
 }
@@ -243,8 +221,8 @@ static void gamepad_ui_init(void) {
     printf("\x1b[8;1H| L3 [    ]     R3 [    ]              |");
     printf("\x1b[9;1H%s", sep);
     printf("\x1b[10;1H| L+START      : change IP             |");
-    printf("\x1b[11;1H| L+START+SEL  : exit                  |");
-    printf("\x1b[12;1H| R+START+SEL  : pointer mode          |");
+    printf("\x1b[11;1H| L+SELECT     : pointer mode          |");
+    printf("\x1b[12;1H| L+START+SEL  : exit                  |");
     printf("\x1b[13;1H%s", sep);
     consoleSelect(g_top_con);
 }
@@ -298,8 +276,8 @@ static void pointer_ui_init(void) {
 
     printf("\x1b[26;1H| SLIDE move  TAP click  TAPx2=drag    |");
     printf("\x1b[27;1H| A Left  B Right  X Mid  Y Lock Left  |");
-    printf("\x1b[28;1H| C-STICK Roll    PAD move             |");
-    printf("\x1b[29;1H| L/R=Wheel  L+ST=SetIP  R+ST+SEL=pad  |");
+    printf("\x1b[28;1H| C-STICK Roll  PAD move  L/R Wheel    |");
+    printf("\x1b[29;1H| L+ST=IP  L+SEL=mode  L+ST+SEL=exit   |");
 
     consoleSelect(g_top_con);
 }
@@ -402,11 +380,10 @@ int main(int argc, char **argv) {
     int sockfd = cfg.serverip[0] ? initsocket(&cfg, mode_port(&cfg)) : -1;
     int isconnected = 0;
 
-    u32 ip_hold = 0, mode_hold = 0, lcd_hold = 0;
+    u32 ip_hold = 0, mode_hold = 0;
     bool ip_armed = true, mode_armed = true;
     bool last_l3 = false, last_r3 = false;
     bool link_drawn = false;
-    int lcdstate = 1;
     u32 seq = 0;
     u32 laststatusupdate = 0;
 
@@ -434,16 +411,17 @@ int main(int argc, char **argv) {
             break;
         }
 
-        /* R + START + SELECT 按住 0.4 秒：手柄 <-> 键鼠 切换。
-           长按 + 松手重臂，避免游戏中误切。 */
-        bool mode_combo = (keys & (KEY_R | KEY_START | KEY_SELECT)) == (KEY_R | KEY_START | KEY_SELECT);
+        /* L + SELECT 按住 0.6 秒：手柄 <-> 键鼠 切换。
+           长按 + 松手重臂，避免打游戏时误切；不含 START，免得和退出撞。 */
+        bool mode_combo = ((keys & (KEY_L | KEY_SELECT)) == (KEY_L | KEY_SELECT))
+                          && !(keys & KEY_START);
         if (!mode_combo) {
             mode_hold = 0;
             mode_armed = true;
         } else if (mode_armed) {
             if (mode_hold == 0) {
                 mode_hold = now ? now : 1;
-            } else if (now - mode_hold > 400) {
+            } else if (now - mode_hold > 600) {
                 mode_hold = 0;
                 mode_armed = false;
                 switch_mode(&cfg, &sockfd, &isconnected);
@@ -468,24 +446,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        /* 背光开关：手柄模式用 cfg 里的键（默认 L）；键鼠模式里 L/R 是滚轮，
-           改成 ZL 长按 1 秒。按住 START 时不触发。 */
-        u32 lcdkey = (cfg.mode == MODE_POINTER) ? KEY_ZL : cfg.lcdtogglekey;
-        if ((keys & lcdkey) && !(keys & KEY_START)) {
-            if (lcd_hold == 0) lcd_hold = now ? now : 1;
-            else if (now - lcd_hold > 1000) {
-                lcdstate = !lcdstate;
-                if (lcdstate) {
-                    gspLcdInit();
-                    GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTH);
-                } else {
-                    GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTH);
-                }
-                lcd_hold = now;
-            }
-        } else {
-            lcd_hold = 0;
-        }
+        /* 背光长按已移除：手柄模式 L 长按会误关屏幕，用户确认不需要 */
 
         /* 心跳 + 断线重连 */
         isconnected = checkconnection(sockfd);
@@ -502,7 +463,7 @@ int main(int argc, char **argv) {
         /* 组合键按住期间不放行这些键，免得 PC 一边滚轮一边打回车 */
         u32 sendbuttons = keys & 0xFFFF;
         if (ip_combo) sendbuttons &= ~(KEY_L | KEY_START);
-        if (mode_combo) sendbuttons &= ~(KEY_R | KEY_START | KEY_SELECT);
+        if (mode_combo) sendbuttons &= ~(KEY_L | KEY_SELECT);
 
         touchPosition touch;
         hidTouchRead(&touch);

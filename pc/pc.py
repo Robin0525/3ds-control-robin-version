@@ -261,7 +261,10 @@ def main():
 
     # Print the address first: the user needs it on the 3DS even if the
     # virtual controller fails to initialize below.
-    print_local_ip()
+    # CONTROL_QUIET is set by receiver_all.py, which prints its own banner.
+    quiet = os.environ.get("CONTROL_QUIET") == "1"
+    if not quiet:
+        print_local_ip()
 
     gamepad = setup_controller()
     if not gamepad:
@@ -272,10 +275,11 @@ def main():
     server_socket.bind(('0.0.0.0', 8888))
     server_socket.setblocking(False)
     
-    print("3DS Controller PC Receiver")
-    print(f"Running in {gamepad_type} mode for {os_name}")
-    print("Listening on port 8888...")
-    print("Press Ctrl+C to exit")
+    if not quiet:
+        print("3DS Controller PC Receiver")
+        print(f"Running in {gamepad_type} mode for {os_name}")
+        print("Listening on port 8888...")
+        print("Press Ctrl+C to exit")
     
     last_check_time = time.time()
     

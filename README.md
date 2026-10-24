@@ -1,6 +1,6 @@
 # 3DS Control（手柄 + 键鼠双模式）
 
-把 Nintendo 3DS 当成 PC 的外设，**一个程序两种模式**，按 `R + START + SELECT` 切换：
+把 Nintendo 3DS 当成 PC 的外设，**一个程序两种模式**，按 `L + SELECT`（按住 0.6 秒）切换：
 
 | 模式 | 用途 | 3DS 发什么 | PC 端 |
 |---|---|---|---|
@@ -62,29 +62,33 @@ pip install vgamepad
 
 还要装 [ViGEmBus 驱动](https://github.com/ViGEm/ViGEmBus/releases)（一次性），否则虚拟手柄建不出来。
 
-然后双击 `tools\start-receiver.bat`。它会**在同一个窗口里起两个接收端**（`PAD` = 手柄 8888，`PTR` = 键鼠 8890），并先打印本机 IP：
+然后双击 `tools\start-receiver.bat`。它会**在同一个窗口里起两个接收端**（`PAD` = 手柄 8888，`PTR` = 键鼠 8890），并把**键位表**直接打在窗口里：
 
 ```
-====================================================
-  3DS Control receiver
-  PC IP : 192.168.10.9
-  PAD = gamepad mode  (UDP 8888)
-  PTR = pointer mode  (UDP 8890)
-  Keep this window open. Ctrl+C stops both.
-====================================================
-[PTR]   监听端口 : 8890  (手柄模式用的是 8888，两者可同时开)
-[PTR]   本机 IP  : 192.168.10.9
-[PAD]   Xbox 360 controller initialized
-[PAD]   Listening on port 8888...
+==================================================================
+  3DS CONTROL  -  PC RECEIVER
+  PC IP  192.168.10.9      <- 3DS 上按 L+START 输入这个地址
+  PAD = 手柄 8888     PTR = 键鼠 8890     Ctrl+C 结束
+==================================================================
+
+  通用快捷键（两种模式都一样）
+------------------------------------------------------------------
+  L + START                         长按 0.6 秒    改 PC IP
+  L + SELECT                        长按 0.6 秒    切换 手柄 / 键鼠
+  L + START + SELECT                退出程序
+
+  手柄模式  GAMEPAD  ->  UDP 8888
+------------------------------------------------------------------
+  A / B / X / Y                     B / A / Y / X   (AB、XY 互换)
+  ...
+[PAD] Xbox 360 controller initialized
 ```
 
-两个接收端是**独立进程**：手柄那条走 ViGEmBus 虚拟手柄，键鼠那条只调 `user32.SendInput`，一个出问题不会拖垮另一个（`PAD` 挂了 `PTR` 还在跑，日志里有 `exited with code`）。
+`[PAD]` / `[PTR]` 前缀表示日志来自哪个接收端。
 
-想只跑其中一个也能单独起：`python pc/pc.py` / `python pc/pc_pointer.py`。
+两个接收端是**独立进程**：手柄那条走 ViGEmBus 虚拟手柄，键鼠那条只调 `user32.SendInput`，一个出问题不会拖垮另一个（日志里会打 `exited with code`）。想只跑其中一个也能单独起：`python pc/pc.py` / `python pc/pc_pointer.py`。
 
-有多块网卡（VMware / WSL / 热点）时会多打一行 `other : ...` 列出其余地址，选和 3DS 同一网段的那个。
-
-**这个窗口要一直开着**。
+**这个窗口要一直开着**（Ctrl+C 一起停）。
 
 ### 2.3 连上
 
@@ -146,12 +150,13 @@ sudo python pc/pc.py
 
 | 组合键 | 作用 |
 |---|---|
-| **`R + START + SELECT`**（按住 0.4 秒） | **切换 GAMEPAD ↔ POINTER**，并记住选择 |
+| **`L + SELECT`**（按住 0.6 秒） | **切换 GAMEPAD ↔ POINTER**，并记住选择 |
 | **`L + START`**（按住 0.6 秒） | 修改 PC 的 IP 地址（软键盘输入，自动保存） |
 | **`L + START + SELECT`** | 退出程序 |
-| `L` 长按 1 秒（手柄模式）/ `ZL` 长按 1 秒（键鼠模式） | 开/关屏幕背光 |
 
-> 键鼠模式下 L/R 是滚轮，所以背光键换成 `ZL`。所有组合键都带"松手重臂"锁存，按住不放不会反复触发；组合键按住期间这些键也不会发给 PC（避免一边滚轮一边打回车）。
+> 所有组合键都带"松手重臂"锁存：按住不放不会反复触发，必须完全松开才能再来一次；组合键按住期间这些键也不会发给 PC（避免一边滚轮一边打回车）。
+
+> **没有背光切换快捷键**：1.1.1 起去掉了"长按 L 关屏"（手柄模式下太容易误触，且上屏启动时本来就已经关掉省电）。
 
 下屏显示当前模式、IP、端口、连接状态、电量，手柄模式另有 L3/R3 状态。
 
@@ -163,7 +168,6 @@ sudo python pc/pc.py
 serverip=192.168.10.9
 port=8888
 pointerport=8890
-lcdtogglekey=KEY_L
 mode=gamepad
 ```
 
@@ -179,8 +183,6 @@ mode=gamepad
 |---|---|---|
 | `.3dsx`（Homebrew Launcher） | `/3ds/` | `/3ds/config.ini` |
 | `.cia`（主菜单） | `/` | `/config.ini` |
-
-`lcdtogglekey` 可选值：`KEY_L` / `KEY_R` / `KEY_ZL` / `KEY_ZR` / `KEY_SELECT`。
 
 ## 5. 编译
 
@@ -241,7 +243,7 @@ python tools/deploy.py --host 192.168.10.11
 | 读不到 `config.ini` | 相对路径按 cwd 处理；没配置时弹一次键盘而不是连假地址 |
 | 写死默认 IP `192.168.1.1`，DHCP 换租约后永远连不上 | 取消默认值，改为**记住上一次输入的 IP**，只改一次 |
 | 没有 L3/R3、没有电量、没有快捷键 | 触摸屏虚拟 L3/R3、下屏 UI 重做、`L+START` 改 IP / `L+START+SELECT` 退出 |
-| 只有手柄，键鼠要另装一个 3dsx | 合并成**双模式单程序**，`R+START+SELECT` 切换，模式记在 config 里 |
+| 只有手柄，键鼠要另装一个 3dsx | 合并成**双模式单程序**，`L+SELECT` 切换，模式记在 config 里 |
 
 详细原因与验证过程见 [CHANGELOG.md](CHANGELOG.md)。
 

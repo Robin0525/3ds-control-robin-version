@@ -17,6 +17,7 @@
 """
 
 import ctypes
+import os
 import socket
 import struct
 import sys
@@ -557,24 +558,26 @@ def main():
     sock.bind(("0.0.0.0", PORT))
     sock.settimeout(0.1)
 
-    print("=" * 52)
-    print("  3DS Control - pointer receiver")
-    print("=" * 52)
-    print(f"  监听端口 : {PORT}  (手柄模式用的是 8888，两者可同时开)")
-    print(f"  本机 IP  : {local_ip()}")
-    print(f"  屏幕     : {ptr.sw} x {ptr.sh}")
-    print(f"  轻点点击 : {'开' if tap_enabled else '关'}   摇杆灵敏度: {sens}")
-    print()
-    print("  3DS 上输入上面的 IP，连上后：")
-    print("    下屏当触控板：滑动=移动光标  轻点=左键  双击后拖动=拖拽")
-    print("    Circle Pad = 移动光标        C-Stick = 滚轮（上下/左右）")
-    print("    A 左键   B 右键   X 中键   Y 锁定左键")
-    print("    L 滚轮上  R 滚轮下  ZL 上一页  ZR 下一页")
-    print("    十字键 = 方向键   START 回车   SELECT 退出键")
-    print("    退出：L+START+SELECT      切换手柄模式：R+START+SELECT")
-    print()
-    print("  Ctrl+C 退出")
-    print("=" * 52)
+    # CONTROL_QUIET is set by receiver_all.py, which prints the keymap itself.
+    if not os.environ.get("CONTROL_QUIET") == "1":
+        print("=" * 52)
+        print("  3DS Control - pointer receiver")
+        print("=" * 52)
+        print(f"  监听端口 : {PORT}  (手柄模式用的是 8888，两者可同时开)")
+        print(f"  本机 IP  : {local_ip()}")
+        print(f"  屏幕     : {ptr.sw} x {ptr.sh}")
+        print(f"  轻点点击 : {'开' if tap_enabled else '关'}   摇杆灵敏度: {sens}")
+        print()
+        print("  3DS 上输入上面的 IP，连上后：")
+        print("    下屏当触控板：滑动=移动光标  轻点=左键  双击后拖动=拖拽")
+        print("    Circle Pad = 移动光标        C-Stick = 滚轮（上下/左右）")
+        print("    A 左键   B 右键   X 中键   Y 锁定左键")
+        print("    L 滚轮上  R 滚轮下  ZL 上一页  ZR 下一页")
+        print("    十字键 = 方向键   START 回车   SELECT 退出键")
+        print("    退出：L+START+SELECT      切换模式：L+SELECT")
+        print()
+        print("  Ctrl+C 退出")
+        print("=" * 52)
 
     connected = False
     last_now = time.time()
