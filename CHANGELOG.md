@@ -6,23 +6,44 @@
 
 ## [Unreleased]
 
+### Planned
+- CIA 打包脚本（依赖 `bannertool` + `makerom`，当前环境未安装）
+- Linux `uinput` 分支实测
+
+## [1.1.0] - 2026-10-24
+
+**双模式合并**：把原来独立的键鼠程序（`3ds_kbm`，端口 8890）并进同一个 3DS 程序，用 `R + START + SELECT` 切换。
+
+### Added
+
+- **POINTER 模式**：下屏当触摸板（绝对定位 + 轻点点击 + 双击拖拽），Circle Pad 移动光标，C-Stick 滚轮，A/B/X = 左/右/中键，Y 锁定左键，L/R 滚轮，ZL/ZR 翻页，十字键方向键，START/SELECT = Enter/Esc。
+- **模式切换**：`R+START+SELECT` 按住 0.4 秒，手柄 ↔ 键鼠，切换后自动重连对应端口并重画下屏。
+- **模式记忆**：`config.ini` 新增 `mode=` / `pointerport=`，下次启动直接进上次的模式。
+- **PC 接收端启动时打印本机 IP**（默认路由所在网卡的地址，另附其余网卡），并提示在 3DS 上 `L + START` 填入。之前窗口只说 `Listening on port 8888`，PC 用 DHCP 时不知道要填哪个地址。
+- 下屏未配置地址时显示 `(not set - L+START)`，状态显示黄色 `NO IP SET`。
+- `pc/receiver_all.py`：一个窗口同时跑两个接收端（`[PAD]` / `[PTR]` 前缀），两个进程互相隔离，一个挂了另一个继续。
+- `tools/start-receiver.bat` 改为启动 `receiver_all.py`。
+
 ### Fixed
+
 - **每次启动都要重输 IP**：`main.c` 里写死了 `DEFAULT_SERVER_IP "192.168.1.1"`，config.ini 缺失或地址过期时不但永远连不上，还会在缺配置时自动生成一份带假 IP 的文件。现在**取消默认地址**：没配置时启动后弹一次软键盘，输入即写入 `config.ini`，以后一直沿用，直到 `L + START` 再改。
 - 没有 IP 时不再每帧尝试 `initsocket()`（原来会对着无效地址空转）。
 - `saveconfigfile()` 把 `lcdtogglekey` 硬编码写回 `KEY_L`，用户改过背光键会被重置。改为按当前值写入。
 - 软键盘关闭后若 `L + START` 仍按着，会立刻再次弹窗。加锁存：必须完全松开才能再次触发。
 - `config.ini` 用 CRLF 保存时（在 PC 记事本里改过），`serverip` 会带一个尾部 `\r`，`inet_pton` 判定地址无效。读取时同时剔除 `\r`。
 
-### Added
-- PC 接收端启动时打印**本机 IP**（默认路由所在网卡的地址，另附其余网卡），并提示在 3DS 上 `L + START` 填入。之前窗口只说 `Listening on port 8888`，PC 用 DHCP 时不知道要填哪个地址。
-- 下屏未配置地址时显示 `(not set - L+START)`，状态显示黄色 `NO IP SET`。
-
 ### Changed
+
+- 退出统一为 `L + START + SELECT`（两种模式一致）；键鼠模式原来的 `START+SELECT` / `ZL+ZR+START` 退出取消，避免和常用按键冲突。
+- 背光切换：手柄模式仍是 `L` 长按 1 秒；键鼠模式 L/R 是滚轮，改为 `ZL` 长按 1 秒。
+- 下屏标题区分模式：`3DS CONTROL [GAMEPAD]` / `3DS CONTROL [POINTER]`。
+- 组合键按住期间把相关按键从发包里剔除（`R+START+SELECT` 切模式时不会在 PC 上连点右键/回车/Esc）。
 - `tools/deploy.py` 默认**不再写 `config.ini`**（新增 `--write-config` 显式开启）。从 PC 推 IP 过去，DHCP 一换租约就变成过期值，正是"每次都要重输"的来源。
 
-### Planned
-- CIA 打包脚本（依赖 `bannertool` + `makerom`，当前环境未安装）
-- Linux `uinput` 分支实测
+### Notes
+
+- 手柄模式仍是 12 字节包、30Hz；键鼠模式 20 字节包、60Hz（绝对定位需要）。
+- 键鼠模式依赖 Windows `SendInput`，Linux 上只有手柄模式。
 
 ## [1.0.0] - 2026-10-20
 
@@ -47,7 +68,7 @@
   - `L + START` 按住 0.6 秒 → 软键盘修改 PC IP，保存到 `config.ini` 并自动重连
   - `L + START + SELECT` → 退出程序
 - **发送频率提升**：20Hz → 30Hz（`VBlank 16.6ms + sleep 16.6ms`），PC 端节流 `0.01` → `0.002`，操作跟手度明显改善。
-- **`tools/` 工程脚本**：`start-receiver.bat`（启动接收端）、`build.bat`（编译并回填 `prebuilt/`）、`deploy.py`（ftpd 上传 + 自动探测 PC IP + 写 config.ini + MD5 校验）、`test-gamepad.py`（实时读 XInput 四个槽位，验证按键是否到达 PC）。
+- **`tools/` 工程脚本**：`start-receiver.bat`（启动接收端）、`build.bat`（编译并回填 `prebuilt/`）、`deploy.py`（ftpd 上传 + MD5 校验）、`test-gamepad.py`（实时读 XInput 四个槽位，验证按键是否到达 PC）。
 
 ### Changed
 
@@ -57,7 +78,7 @@
 
 ### Removed
 
-- 上游 README 中"待办"里的键盘/触屏输入（本仓库不做键鼠模拟，那是另一个独立项目的事）。
+- 上游 README 中"待办"里的键盘/触屏输入（当时作为独立项目维护，**1.1.0 起已合并进同一程序**）。
 
 ### Notes
 

@@ -1,10 +1,17 @@
-# 3DS Controller（个人修改版）
+# 3DS Control（手柄 + 键鼠双模式）
 
-把 Nintendo 3DS 当成 PC 的**无线手柄**：3DS 只负责采集按键和摇杆，通过 UDP 每帧发 12 字节给 PC；PC 端用 `vgamepad` 建一个虚拟 Xbox 360 手柄，游戏直接认。**不传画面**，延迟接近原生手柄。
+把 Nintendo 3DS 当成 PC 的外设，**一个程序两种模式**，按 `R + START + SELECT` 切换：
 
-> **English**: a patched fork of [icicle1133/3ds-controller](https://github.com/icicle1133/3ds-controller) that actually works in-game — 12-byte packet fix, touch-screen L3/R3, non-blocking heartbeat at 30 Hz. See [CHANGELOG.md](CHANGELOG.md). Noncommercial only.
+| 模式 | 用途 | 3DS 发什么 | PC 端 |
+|---|---|---|---|
+| **GAMEPAD** | 无线手柄 | 每帧 12 字节 UDP → `8888` | `vgamepad` 虚拟 Xbox 360 手柄 |
+| **POINTER** | 触摸板 + 鼠标 + 键盘 | 每帧 20 字节 UDP → `8890` | `SendInput` 真实鼠标键盘 |
 
-> 本仓库是 [icicle1133/3ds-controller](https://github.com/icicle1133/3ds-controller)（v0.0.5）的**个人修改版**，修掉了上游"能连上但游戏完全没反应"等几个硬伤，并重做了快捷键与下屏 UI。上游原始 README 保留在 [`docs/upstream-README.md`](docs/upstream-README.md)。
+两种模式都**不传画面**，只发输入，延迟接近原生外设。
+
+> **English**: a patched fork of [icicle1133/3ds-controller](https://github.com/icicle1133/3ds-controller) that actually works in-game — 12-byte packet fix, touch-screen L3/R3, non-blocking heartbeat at 30 Hz, plus a pointer (trackpad/mouse) mode merged from the same project's keyboard-mouse build. See [CHANGELOG.md](CHANGELOG.md). Noncommercial only.
+
+> 本仓库是 [icicle1133/3ds-controller](https://github.com/icicle1133/3ds-controller)（v0.0.5）的**个人修改版**，修掉了上游"能连上但游戏完全没反应"等几个硬伤，重做了快捷键与下屏 UI，并把键鼠控制合并进同一个程序。上游原始 README 保留在 [`docs/upstream-README.md`](docs/upstream-README.md)。
 >
 > 改动清单见 [CHANGELOG.md](CHANGELOG.md)。许可证沿用上游的 **PolyForm Noncommercial License 1.0.0**（见 [LICENSE](LICENSE)）——**禁止商业用途**。
 
@@ -15,20 +22,21 @@
 ```
 3ds-controller/
 ├── src/                       # 3DS 端源码（libctru）
-│   ├── source/main.c          # 全部 3DS 端逻辑都在这一个文件
+│   ├── source/main.c          # 全部 3DS 端逻辑都在这一个文件（双模式）
 │   ├── Makefile
 │   ├── app.rsf                # CIA 打包描述
-│   ├── banner.png / icon.png / audio.wav
-│   └── LICENSE
+│   └── banner.png / icon.png / audio.wav
 ├── pc/
-│   ├── pc.py                  # PC 接收端（单文件，无第三方依赖除 vgamepad）
+│   ├── receiver_all.py        # 一键启动两个接收端（推荐入口）
+│   ├── pc.py                  # 手柄接收端（vgamepad）
+│   ├── pc_pointer.py          # 键鼠接收端（SendInput）
 │   └── requirements.txt
 ├── prebuilt/
-│   └── 3ds_controller.3dsx    # 已编译好的成品（2026-10-20 构建）
+│   └── 3ds_controller.3dsx    # 已编译好的成品
 ├── tools/
-│   ├── start-receiver.bat     # 日常启动 PC 接收端
+│   ├── start-receiver.bat     # 日常启动（同时起两个接收端，一个窗口）
 │   ├── build.bat              # 一键编译 + 回填 prebuilt/
-│   ├── deploy.py              # 通过 ftpd 上传 3dsx 并写 config.ini
+│   ├── deploy.py              # 通过 ftpd 上传 3dsx
 │   ├── ftp_client.py          # FTP 封装（修正 PASV 返回的内网地址）
 │   └── test-gamepad.py/.bat   # 实时读 XInput，验证按键有没有到 PC
 ├── docs/
@@ -42,8 +50,9 @@
 ### 2.1 3DS 侧
 
 1. 把 `prebuilt/3ds_controller.3dsx` 复制到 SD 卡的 **`/3ds/`** 目录
-2. 进 **Homebrew Launcher**（或 FBI → SD → `3ds/` → 选中它）启动 `3ds_controller`
+2. 进 **Homebrew Launcher**（或 FBI → SD → `3ds/` → 选中它）启动
 3. **上屏会立刻黑掉，这是正常设计**（省电，只留背光关闭的上屏）；所有信息都在下屏
+4. 启动时进哪个模式，看上次用的是哪个（记在 `config.ini` 的 `mode=`）
 
 ### 2.2 PC 侧（Windows）
 
@@ -53,22 +62,25 @@ pip install vgamepad
 
 还要装 [ViGEmBus 驱动](https://github.com/ViGEm/ViGEmBus/releases)（一次性），否则虚拟手柄建不出来。
 
-然后双击 `tools\start-receiver.bat`，窗口第一屏就会打印**本机 IP**（3DS 要填的就是它）：
+然后双击 `tools\start-receiver.bat`。它会**在同一个窗口里起两个接收端**（`PAD` = 手柄 8888，`PTR` = 键鼠 8890），并先打印本机 IP：
 
 ```
 ====================================================
+  3DS Control receiver
   PC IP : 192.168.10.9
-  port  : 8888 (UDP)
-
-  On the 3DS press and hold L + START (0.6s),
-  then type the PC IP above.
+  PAD = gamepad mode  (UDP 8888)
+  PTR = pointer mode  (UDP 8890)
+  Keep this window open. Ctrl+C stops both.
 ====================================================
-
-Xbox 360 controller initialized
-3DS Controller PC Receiver
-Running in vgamepad mode for Windows
-Listening on port 8888...
+[PTR]   监听端口 : 8890  (手柄模式用的是 8888，两者可同时开)
+[PTR]   本机 IP  : 192.168.10.9
+[PAD]   Xbox 360 controller initialized
+[PAD]   Listening on port 8888...
 ```
+
+两个接收端是**独立进程**：手柄那条走 ViGEmBus 虚拟手柄，键鼠那条只调 `user32.SendInput`，一个出问题不会拖垮另一个（`PAD` 挂了 `PTR` 还在跑，日志里有 `exited with code`）。
+
+想只跑其中一个也能单独起：`python pc/pc.py` / `python pc/pc_pointer.py`。
 
 有多块网卡（VMware / WSL / 热点）时会多打一行 `other : ...` 列出其余地址，选和 3DS 同一网段的那个。
 
@@ -76,11 +88,11 @@ Listening on port 8888...
 
 ### 2.3 连上
 
-3DS 下屏 `Status` 变绿 **CONNECTED** 即成功，此时 PC 窗口会打印 `New 3DS connected from 192.168.x.x`。
+3DS 下屏状态变绿 **CONNECTED** 即成功，PC 窗口会打印 `New 3DS connected from 192.168.x.x`（带 `[PAD]` 或 `[PTR]` 前缀，看当前模式）。
 
 连不上（PC 换了 IP）：在 3DS 上按住 **`L + START` 约 0.6 秒** → 软键盘输入 PC 的 IP → 确认，自动保存并重连。
 
-**IP 只需要输一次**：程序会把它记在 `config.ini` 里，之后每次启动直接连。下屏平时显示的就是当前记住的地址，没有配置时显示 `(not set - L+START)`。
+**IP 只需要输一次**：程序会把它记在 `config.ini` 里，之后每次启动直接连。下屏平时显示的就是当前记住的地址，没有配置时显示 `(not set - L+START)` / `NO IP SET`。
 
 ### 2.4 Linux
 
@@ -91,9 +103,11 @@ pip install python-uinput
 sudo python pc/pc.py
 ```
 
-> `uinput` 分支保留上游实现，尚未实测；Windows 分支是本仓库的主线。
+> `uinput` 分支（手柄模式）保留上游实现，尚未实测；**键鼠模式 `pc_pointer.py` 依赖 Windows `SendInput`，只能在 Windows 上跑**。
 
 ## 3. 按键映射
+
+### 3.1 GAMEPAD 模式（无线手柄）
 
 | 3DS 输入 | PC（XInput） | 说明 |
 |---|---|---|
@@ -110,26 +124,51 @@ sudo python pc/pc.py
 
 3DS 没有可按下的摇杆，所以 L3/R3 由触摸屏左右两半虚拟出来。
 
-### 3DS 上的系统快捷键
+### 3.2 POINTER 模式（触摸板 / 鼠标 / 键盘）
+
+| 3DS 输入 | PC 行为 |
+|---|---|
+| 下屏滑动 | 移动光标（绝对定位，按触摸点映射整块屏幕） |
+| 下屏轻点 | 左键单击 |
+| 双击后拖动 | 按住左键拖拽 |
+| Circle Pad | 移动光标（相对移动） |
+| C-Stick | 滚轮（上下 / 左右） |
+| A / B / X | 左键 / 右键 / 中键 |
+| Y | 锁定左键（按住拖拽） |
+| L / R | 滚轮上 / 下 |
+| ZL / ZR | PageUp / PageDown |
+| 十字键 | 方向键 |
+| START / SELECT | Enter / Esc |
+
+按键语义全部在 `pc/pc_pointer.py` 里，改手感只改 Python，不用重编译 3DS 端。启动参数：`--debug`、`--no-tap`（关掉轻点点击）、`--sensitivity 1.4`。
+
+### 3DS 上的系统快捷键（两种模式通用）
 
 | 组合键 | 作用 |
 |---|---|
+| **`R + START + SELECT`**（按住 0.4 秒） | **切换 GAMEPAD ↔ POINTER**，并记住选择 |
 | **`L + START`**（按住 0.6 秒） | 修改 PC 的 IP 地址（软键盘输入，自动保存） |
 | **`L + START + SELECT`** | 退出程序 |
-| `L` 长按 1 秒 | 开/关屏幕背光（同时按住 START 时不触发，避免和改 IP 冲突） |
+| `L` 长按 1 秒（手柄模式）/ `ZL` 长按 1 秒（键鼠模式） | 开/关屏幕背光 |
 
-下屏同时显示：IP、端口、连接状态、电量、L3/R3 状态、快捷键提示。
+> 键鼠模式下 L/R 是滚轮，所以背光键换成 `ZL`。所有组合键都带"松手重臂"锁存，按住不放不会反复触发；组合键按住期间这些键也不会发给 PC（避免一边滚轮一边打回车）。
 
-## 4. config.ini（记住上一次的 IP）
+下屏显示当前模式、IP、端口、连接状态、电量，手柄模式另有 L3/R3 状态。
+
+## 4. config.ini（记住上一次的 IP 和模式）
 
 **程序里没有内置默认 IP。** 第一次启动（或 SD 卡上没有配置）时会自动弹出软键盘，输入一次 PC 的 IP；这个地址会写进 `config.ini`，**以后每次启动都直接用，不用再输**。只有 PC 的 IP 变了才需要按住 `L + START` 改一次。
 
 ```ini
 serverip=192.168.10.9
 port=8888
+pointerport=8890
 lcdtogglekey=KEY_L
+mode=gamepad
 ```
 
+- `mode`：`gamepad` 或 `pointer`，切换模式时自动写回，下次启动直接进这个模式
+- `port` / `pointerport`：两种模式各自的 UDP 端口
 - IP 没配置时下屏显示 `IP  (not set - L+START)`、状态显示黄色的 `NO IP SET`，此时不会去连一个无效地址空转
 - 配置不存在也不会自动生成一份带假 IP 的文件（旧版本写死 `192.168.1.1`，DHCP 一换租约就永远连不上）
 - `config.ini` 用 CRLF 换行也能正确解析（在 PC 上用记事本改过也没问题）
@@ -184,6 +223,8 @@ python tools/deploy.py --host 192.168.10.11
 ## 7. 已知限制
 
 - **只认 XInput 槽位 0**：虚拟手柄按设备连接顺序分配槽位，插着物理手柄时虚拟手柄会被挤到 1 号槽，多数游戏只读 0 号 → **拔掉物理手柄**。用 `tools\test-gamepad.bat` 可以看到当前落在哪个槽。
+- **键鼠模式只能在 Windows 上用**（`sendinput`）。手柄模式 Linux 有 `uinput` 分支但未实测。
+- **切换模式会短暂断连**：换模式就是换端口，PC 端两个接收端都在监听，所以不会丢连接状态，但当前模式的 socket 会重连一次（约 1 秒）。
 - **不提供 CIA**：本机没有打包工具，仓库里只有 `.3dsx`。要用主菜单图标请自行编译 CIA 并安装。
 - **3DS 只支持 2.4GHz Wi-Fi**，必须和 PC 在同一网段；信号差时偶发丢包（表现为按键延迟）。
 - 上屏背光关闭是硬编码的，想改看 `main.c` 里 `GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_TOP)`。
@@ -200,6 +241,7 @@ python tools/deploy.py --host 192.168.10.11
 | 读不到 `config.ini` | 相对路径按 cwd 处理；没配置时弹一次键盘而不是连假地址 |
 | 写死默认 IP `192.168.1.1`，DHCP 换租约后永远连不上 | 取消默认值，改为**记住上一次输入的 IP**，只改一次 |
 | 没有 L3/R3、没有电量、没有快捷键 | 触摸屏虚拟 L3/R3、下屏 UI 重做、`L+START` 改 IP / `L+START+SELECT` 退出 |
+| 只有手柄，键鼠要另装一个 3dsx | 合并成**双模式单程序**，`R+START+SELECT` 切换，模式记在 config 里 |
 
 详细原因与验证过程见 [CHANGELOG.md](CHANGELOG.md)。
 
